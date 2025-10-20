@@ -1,8 +1,6 @@
 import pandas as pd
 from conversor import conversor
 import streamlit as st
-from io import BytesIO
-
 
 st.title("Conversor")
 st.write("Classificação de pedidos em atraso")
