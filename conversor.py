@@ -75,7 +75,6 @@ def g_comprador(grupo):
     }
     return compradores.get(grupo, 'N/A')
 
-
 def conversor(arquivo_csv):
 
     # Cria um novo Excel na memória
@@ -175,4 +174,3 @@ def conversor(arquivo_csv):
     arquivo.save(buffer)
     buffer.seek(0)
     return buffer
-
