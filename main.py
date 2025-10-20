@@ -1,0 +1,24 @@
+import pandas as pd
+from conversor import conversor
+import streamlit as st
+from io import BytesIO
+
+
+st.title("Conversor")
+st.write("Classificação de pedidos em atraso")
+st.divider()
+col1,col2 = st.columns(2)
+with col1:
+    df = st.file_uploader("Carregar arquivo CSV",type="csv",help="Carregue o arquivo CSV do relatório exportado do SAP")
+if df is not None:
+    st.success("Arquivo carregado com sucesso!")
+    excel = conversor(df)
+    btn = st.download_button(
+        label= "Baixar arquivo Excel",
+        data = excel,
+        file_name="Base Pedido Atrasados.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        help="Faça download do arquivo excel convertido e classificado"
+    )
+    if btn:
+        st.success("Arquivo baixado com sucesso!")
