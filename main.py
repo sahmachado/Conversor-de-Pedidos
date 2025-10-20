@@ -21,7 +21,7 @@ if df is not None:
         btn = st.download_button(
             label= "Download",
             data = excel,
-            file_name="Base Pedido Atrasados.xlsx",
+            file_name="Base Pedidos Atrasados.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             help="Faça download do arquivo excel convertido e classificado"
         )
