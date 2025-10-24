@@ -1,0 +1,158 @@
+import pandas as pd
+from io import BytesIO
+from openpyxl import Workbook
+from datetime import datetime, date
+
+def str_para_data(data_str):
+    """Converte string de data para datetime.date."""
+    if isinstance(data_str, date):
+        return data_str
+    if not isinstance(data_str, str) or not data_str.strip():
+        return None
+    for formato in ("%Y-%m-%d", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(data_str, formato).date()
+        except ValueError:
+            continue
+    return None
+
+def converter_num(numero):
+    """Converte número formatado (pt-BR) para float."""
+    if pd.isna(numero):
+        return 0
+    numero = str(numero).replace('.', '').replace(',', '.')
+    try:
+        return float(numero)
+    except ValueError:
+        return 0
+
+def gerar_codigo(pedido, item):
+    """Gera código único para pedido/item."""
+    pedido = str(pedido)
+    if pedido.startswith('45'):
+        final_pedido = pedido[4:]
+    elif pedido.startswith('46'):
+        final_pedido = pedido[5:]
+    elif pedido.startswith('43'):
+        final_pedido = pedido[6:]
+    else:
+        final_pedido = pedido
+    return f'{final_pedido}{item}'
+
+def localidade(grupo):
+    mapa = {
+        120: 'SP', 128: 'MG', 129: 'MG', 130: 'MG',
+        132: 'MG',133: 'SP', 134: 'SP', 135: 'SP',136: 'MG',
+        137: 'MG', 138: 'MG', 139: 'MG', 141: 'MG',
+        142: 'MG', 143: 'MG', 144: 'MG', 146: 'SP'
+    }
+    return mapa.get(grupo, 'N/A')
+
+def g_comprador(grupo):
+    compradores = {
+        120: 'Alexsandro', 128: 'Leonardo', 129: 'Diane', 130: 'Dinora',
+        132: 'Palloma',133: 'Barbara', 134: 'Luci', 135: 'Roberta',
+        136: 'Diego', 137: 'Eliene', 138: 'Felipe',
+        139: 'Rafael', 141: 'Gabriel',142: 'Lucimara', 143: 'Tiago',
+        144: 'Andre', 146: 'Fabiana'
+    }
+    return compradores.get(grupo, 'N/A')
+
+def inicio(me80fn, yb, me2n):
+    """Recebe arquivos CSV (BytesIO ou paths) e gera Excel consolidado em memória."""
+    # Lê CSVs (detecta se veio como arquivo enviado ou caminho local)
+    def ler_csv(arquivo):
+        if hasattr(arquivo, 'read'):
+            return pd.read_csv(arquivo, sep=';', encoding='latin1', low_memory=False)
+        return pd.read_csv(str(arquivo), sep=';', encoding='latin1', low_memory=False)
+
+    df_me80fn = ler_csv(me80fn)
+    df_yb = ler_csv(yb)
+    df_me2n = ler_csv(me2n)
+
+    # Cria planilha
+    arquivo = Workbook()
+    aba = arquivo.active
+    aba.title = "Base"
+
+    colunas = [
+        "Nº Pedido", "Item", "Final", "Fornecedor",
+        "Comprador", "Data Criação", "Data Remessa SAP", "Frete", "Faturamento",
+        "Entrada Física", "Entrada Fiscal", "Qtde Solicitada", "Qtde Entregue", "Localidade"
+    ]
+    aba.append(colunas)
+
+    # Dicionários de dados
+    dictQ, dictE, fornecedor_dict, comprador_dict = {}, {}, {}, {}
+    remessa_dict, data_dict, frete_dict, faturamento_dict = {}, {}, {}, {}
+    qtd_solicitadadict, qtd_entreguedict, extorno_dict = {}, {}, {}
+
+    # Processa df_me80fn
+    for _, linha in df_me80fn.iterrows():
+        pedido = linha['Documento de compras']
+        item = linha['Item']
+        codigo = gerar_codigo(pedido, item)
+        ctg_pedido = linha.get('Ctg.de histórico de pedido', '')
+        movimento = linha.get('Tipo de movimento', '')
+        cod_debcred = linha.get('Cód.débito/crédito', '')
+        data = linha.get('Data de entrada', '')
+        faturamento = linha.get('Data do documento', '')
+        qtd_entregue = converter_num(linha.get('Quantidade', 0))
+
+        dictQ[f"{codigo}Q"] = data
+        if movimento == 101:
+            dictE[f"{codigo}E"] = data
+        faturamento_dict[codigo] = faturamento
+
+        if (movimento != 102) and (ctg_pedido == 'Q'):
+            qtd_entreguedict[codigo] = qtd_entreguedict.get(codigo, 0) + qtd_entregue
+        if (movimento == 102 and cod_debcred != 'H') or (cod_debcred == 'H' and ctg_pedido == 'Q'):
+            extorno_dict[codigo] = extorno_dict.get(codigo, 0) + qtd_entregue
+
+    # Ajusta entregas com extorno
+    for codigo in qtd_entreguedict:
+        if codigo in extorno_dict:
+            qtd_entreguedict[codigo] += extorno_dict[codigo]
+
+    # Processa df_me2n
+    for _, linha in df_me2n.iterrows():
+        codigo = linha['Chave']
+        remessa_dict[codigo] = linha.get('Dat.rem.estatística', '')
+        qtd_solicitadadict[codigo] = converter_num(linha.get('Qtd.pedido', 0))
+
+    # Processa df_yb
+    for _, linha in df_yb.iterrows():
+        codigo = linha['Chave']
+        fornecedor_dict[codigo] = linha.get('Nº conta do fornecedor', '')
+        comprador_dict[codigo] = linha.get('GCm', '')
+        data_dict[codigo] = linha.get('Data doc.', '')
+        frete_dict[codigo] = linha.get('IncTm', '')
+
+    # Monta planilha
+    for idx, linha in df_me80fn.iterrows():
+        pedido = linha['Documento de compras']
+        item = linha['Item']
+        codigo = gerar_codigo(pedido, item)
+
+        aba.append([
+            pedido,
+            item,
+            codigo,
+            fornecedor_dict.get(codigo, ''),
+            g_comprador(comprador_dict.get(codigo, '')),
+            data_dict.get(codigo, ''),
+            remessa_dict.get(codigo, ''),
+            frete_dict.get(codigo, ''),
+            faturamento_dict.get(codigo, ''),
+            dictE.get(f"{codigo}E", ''),
+            dictQ.get(f"{codigo}Q", ''),
+            qtd_solicitadadict.get(codigo, 0),
+            qtd_entreguedict.get(codigo, 0),
+            localidade(comprador_dict.get(codigo, ''))
+        ])
+
+    # Retorna Excel pronto pra download
+    buffer = BytesIO()
+    arquivo.save(buffer)
+    buffer.seek(0)
+    return buffer
