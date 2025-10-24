@@ -1,5 +1,5 @@
 import streamlit as st
-from classificacao_otif import inicio # importa tua função que gera o Excel
+from funcoes_otif import inicio # importa tua função que gera o Excel
 
 st.write("Classificador otif")
 
